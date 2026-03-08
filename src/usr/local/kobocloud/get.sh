@@ -3,6 +3,8 @@
 
 TEST=$1
 
+mkdir -p /mnt/onboard/.add/kobocloud/MoonReaderState
+
 #load config
 . $(dirname $0)/config.sh
 export UserConfig
@@ -73,6 +75,11 @@ while read url || [ -n "$url" ]; do
       $KC_HOME/getDropboxAppFiles.sh "$client_id" "$refresh_token" "$Lib"
     elif echo $url | grep -q '^https*://filedn.com\|^https*://filedn.eu\|^https*://[^/]*pcloud'; then
       $KC_HOME/getpCloudFiles.sh "$url" "$Lib"
+    elif echo "$url" | grep -q '^MOONSTATE:https*://drive.google.com'; then
+      moon_url=$(echo "$url" | sed 's/^MOONSTATE://')
+      "$KC_HOME/getGDriveFiles.sh" "$moon_url" "/mnt/onboard/.add/kobocloud/MoonReaderState"
+    elif echo "$url" | grep -q '^https*://drive.google.com'; then
+      "$KC_HOME/getGDriveFiles.sh" "$url" "$Lib"
     elif echo $url | grep -q '^https*://drive.google.com'; then
       $KC_HOME/getGDriveFiles.sh "$url" "$Lib"
     elif echo $url | grep -q '^https*://app.box.com'; then
