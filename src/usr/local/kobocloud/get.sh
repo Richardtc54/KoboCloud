@@ -117,6 +117,11 @@ then
 else
   echo "Library has changed, rescan needed"
 
+# MoonReader -> Kobo progress sync (run even if library did not change)
+if [ -x "$KC_HOME/syncMoonReaderProgress.sh" ]; then
+  echo "Running MoonReader progress sync"
+  "$KC_HOME/syncMoonReaderProgress.sh"
+fi
 
   if [ "$TEST" = "" ]
   then
