@@ -1,63 +1,74 @@
 #!/bin/sh
-WHERE ContentID = '$bookid'
-  AND ContentType = 6;
 
-UPDATE content
-SET ___PercentRead = $pct
-WHERE ContentID = '$chapterid'
-  AND ContentType = 9;
-COMMIT;
-SQL
+STATE_DIR="/mnt/onboard/.add/kobocloud/MoonReaderState"
+DB="/mnt/onboard/.kobo/KoboReader.sqlite"
+SQLITE="/usr/bin/sqlite3"
+
+log() {
+  echo "[MoonSync] $*"
 }
 
-if [ ! -d "$STATE_DIR" ]; then
-  log "State dir not found: $STATE_DIR"
-  exit 0
-fi
+extract_percent() {
+  echo "$1" | sed -n 's/.*:\([0-9.]*%\).*/\1/p'
+}
 
-if [ ! -f "$DB" ]; then
-  log "Database not found: $DB"
-  exit 1
-fi
+percent_to_int() {
+  p="${1%%%}"
+  printf "%.0f\n" "$p"
+}
 
-if [ ! -x "$SQLITE" ]; then
-  log "sqlite3 not found at $SQLITE"
-  exit 1
-fi
+find_book() {
+  name="$1"
 
-find "$STATE_DIR" -type f -name '*.epub.po' | while read po; do
-  po_name="$(basename "$po")"
-  book_file="${po_name%.po}"
-  book_norm="$(normalize_name "$book_file")"
+  "$SQLITE" "$DB" "
+  SELECT ContentID
+  FROM content
+  WHERE ContentType=6
+  AND ContentID LIKE '%$name%'
+  LIMIT 1;
+  "
+}
 
-  raw_line="$(tail -n 1 "$po" | tr -d '\r\n')"
-  pct_raw="$(extract_percent "$raw_line")"
+update_progress() {
+
+bookid="$1"
+pct="$2"
+
+"$SQLITE" "$DB" "
+UPDATE content
+SET ___PercentRead=$pct,
+    ReadStatus=1,
+    DateLastRead=datetime('now')
+WHERE ContentID='$bookid';
+"
+
+}
+
+for po in "$STATE_DIR"/*.epub.po
+do
+
+  file=$(basename "$po")
+  book=${file%.po}
+
+  line=$(tail -n 1 "$po")
+
+  pct_raw=$(extract_percent "$line")
 
   if [ -z "$pct_raw" ]; then
-    log "No percentage found in $po_name"
-    continue
+     continue
   fi
 
-  pct_int="$(percent_to_int "$pct_raw")"
-  bookid="$(find_book_contentid "$book_norm")"
+  pct=$(percent_to_int "$pct_raw")
+
+  bookid=$(find_book "$book")
 
   if [ -z "$bookid" ]; then
-    log "No Kobo match for $book_file"
-    continue
+     log "Book not found $book"
+     continue
   fi
 
-  chapterid="$(find_best_chapter "$bookid" "$pct_int")"
-  if [ -z "$chapterid" ]; then
-    chapterid="$(fallback_last_chapter "$bookid")"
-  fi
+  log "Updating $book -> $pct %"
 
-  if [ -z "$chapterid" ]; then
-    log "No chapter found for $bookid"
-    continue
-  fi
+  update_progress "$bookid" "$pct"
 
-  log "Updating $book_file => $pct_int% ($bookid / $chapterid)"
-  update_progress "$bookid" "$chapterid" "$pct_int"
 done
-
-exit 0
